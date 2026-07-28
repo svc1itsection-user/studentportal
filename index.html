@@ -83,9 +83,9 @@
   </main>
 
   <script>
-    // Embedded Credentials
+    // Embedded Supabase Credentials
     const SUPABASE_URL = 'https://etizsatbjfsubdpsxjza.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_7ThT_6Up1Rya208GcGAEbg_Y_GNTi1N';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0aXpzYXRiamZzdWJkcHN4anphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyMzQzNzUsImV4cCI6MjEwMDgxMDM3NX0.i1xxc1MMpygj0GPnzEP4dR8d6odfmiEOJfjQBcrXguY';
 
     // Initialize Supabase JS Client
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -121,8 +121,8 @@
           .eq('password', passwordInput);
 
         if (error) {
-          console.error('Supabase Query Error:', error);
-          errorMsg.textContent = 'Database connection error. Please verify RLS policies or try again.';
+          console.error('Supabase Error Details:', error);
+          errorMsg.textContent = `Database error: ${error.message || error.details || 'Check RLS policy'}`;
           errorMsg.classList.remove('hidden');
           return;
         }
@@ -141,7 +141,7 @@
 
       } catch (err) {
         console.error('Unexpected Error:', err);
-        errorMsg.textContent = 'An unexpected error occurred. Please try again.';
+        errorMsg.textContent = `Unexpected error: ${err.message || err}`;
         errorMsg.classList.remove('hidden');
       } finally {
         // RESET BUTTON STATE
