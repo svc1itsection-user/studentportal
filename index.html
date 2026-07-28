@@ -4,10 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Student Grade Portal</title>
-  <!-- Tailwind CSS for clean UI styling -->
+  <!-- Tailwind CSS for styling -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Supabase JS Client library -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    /* CSS Animation for rotating loader spinner */
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top: 4px solid #ffffff;
+      width: 24px;
+      height: 24px;
+      animation: spin 0.8s linear infinite;
+    }
+  </style>
 </head>
 <body class="bg-gray-100 min-h-screen font-sans text-gray-800">
 
@@ -22,7 +37,7 @@
   <main class="max-w-5xl mx-auto p-4 mt-6">
     
     <!-- Student Login Card -->
-    <div id="login-card" class="bg-white p-6 rounded-lg shadow-md max-w-md mx-auto">
+    <div id="login-card" class="bg-white p-6 rounded-lg shadow-md max-w-md mx-auto relative">
       <h2 class="text-xl font-bold mb-4 text-center text-gray-700">Student Login</h2>
       
       <div class="space-y-4">
@@ -36,8 +51,10 @@
           <input type="password" id="password" placeholder="Enter your password" class="w-full border px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
 
-        <button onclick="loginStudent()" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded transition">
-          View Grades
+        <!-- Submit Button with built-in Loading State -->
+        <button id="submit-btn" onclick="loginStudent()" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2 rounded transition flex justify-center items-center gap-2">
+          <span id="btn-text">View Grades</span>
+          <div id="btn-spinner" class="spinner hidden"></div>
         </button>
 
         <p id="error-msg" class="text-red-500 text-sm text-center hidden"></p>
@@ -70,51 +87,73 @@
     const SUPABASE_URL = 'https://etizsatbjfsubdpsxjza.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_7ThT_6Up1Rya208GcGAEbg_Y_GNTi1N';
 
-    // Initialized client without variable shadowing conflict
+    // Initialize Supabase JS Client
     const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     async function loginStudent() {
-      const studentId = document.getElementById('student-id').value.trim();
-      const password = document.getElementById('password').value.trim();
+      const studentIdInput = document.getElementById('student-id').value.trim();
+      const passwordInput = document.getElementById('password').value.trim();
       const errorMsg = document.getElementById('error-msg');
+      const submitBtn = document.getElementById('submit-btn');
+      const btnText = document.getElementById('btn-text');
+      const btnSpinner = document.getElementById('btn-spinner');
 
       errorMsg.classList.add('hidden');
 
-      if (!studentId || !password) {
+      if (!studentIdInput || !passwordInput) {
         errorMsg.textContent = 'Please enter both Student ID and Password.';
         errorMsg.classList.remove('hidden');
         return;
       }
 
-      // Query Supabase for matching records
-      const { data, error } = await supabaseClient
-        .from('portal_records')
-        .select('*')
-        .eq('student_id', studentId)
-        .eq('password', password);
+      // 1. START ROTATING SEARCHING PROCESS
+      submitBtn.disabled = true;
+      submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
+      btnText.textContent = 'Searching...';
+      btnSpinner.classList.remove('hidden');
 
-      if (error) {
-        console.error('Supabase Query Error:', error);
-        errorMsg.textContent = 'Database error. Please try again later.';
+      try {
+        // Query Supabase for records matching Student ID and Password
+        const { data, error } = await supabaseClient
+          .from('portal_records')
+          .select('*')
+          .eq('student_id', studentIdInput)
+          .eq('password', passwordInput);
+
+        if (error) {
+          console.error('Supabase Query Error:', error);
+          errorMsg.textContent = 'Database connection error. Please verify RLS policies or try again.';
+          errorMsg.classList.remove('hidden');
+          return;
+        }
+
+        if (!data || data.length === 0) {
+          errorMsg.textContent = 'Invalid Student ID or Password.';
+          errorMsg.classList.remove('hidden');
+          return;
+        }
+
+        // 2. SUCCESS: Reveal Student Dashboard
+        document.getElementById('login-card').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+
+        renderDashboard(data);
+
+      } catch (err) {
+        console.error('Unexpected Error:', err);
+        errorMsg.textContent = 'An unexpected error occurred. Please try again.';
         errorMsg.classList.remove('hidden');
-        return;
+      } finally {
+        // RESET BUTTON STATE
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-80', 'cursor-not-allowed');
+        btnText.textContent = 'View Grades';
+        btnSpinner.classList.add('hidden');
       }
-
-      if (!data || data.length === 0) {
-        errorMsg.textContent = 'Invalid Student ID or Password.';
-        errorMsg.classList.remove('hidden');
-        return;
-      }
-
-      // Hide login form and reveal dashboard
-      document.getElementById('login-card').classList.add('hidden');
-      document.getElementById('dashboard').classList.remove('hidden');
-
-      renderDashboard(data);
     }
 
     function renderDashboard(records) {
-      // Set student profile info from the first matching record
+      // Set student profile header info
       const student = records[0];
       document.getElementById('student-name').textContent = student.name || 'Student';
       document.getElementById('student-info').textContent = `ID: ${student.student_id} | Course: ${student.course || 'N/A'}`;
@@ -122,7 +161,7 @@
       const container = document.getElementById('records-container');
       container.innerHTML = '';
 
-      // Render a details card for every subject/term entry
+      // Render details card for every subject/term entry
       records.forEach(rec => {
         const card = document.createElement('div');
         card.className = 'bg-white p-6 rounded-lg shadow-md border-l-4 border-blue-600';
