@@ -70,7 +70,8 @@
     const SUPABASE_URL = 'https://etizsatbjfsubdpsxjza.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_7ThT_6Up1Rya208GcGAEbg_Y_GNTi1N';
 
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Initialized client without variable shadowing conflict
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     async function loginStudent() {
       const studentId = document.getElementById('student-id').value.trim();
@@ -86,7 +87,7 @@
       }
 
       // Query Supabase for matching records
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('portal_records')
         .select('*')
         .eq('student_id', studentId)
