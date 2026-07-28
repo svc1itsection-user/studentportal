@@ -106,23 +106,23 @@
         return;
       }
 
-      // 1. START ROTATING SEARCHING PROCESS
+      // START ROTATING SEARCHING PROCESS
       submitBtn.disabled = true;
       submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
       btnText.textContent = 'Searching...';
       btnSpinner.classList.remove('hidden');
 
       try {
-        // Query Supabase for records matching Student ID and Password
+        // Query Supabase using 1-word column names: studentid and password
         const { data, error } = await supabaseClient
           .from('portal_records')
           .select('*')
-          .eq('student_id', studentIdInput)
+          .eq('studentid', studentIdInput)
           .eq('password', passwordInput);
 
         if (error) {
           console.error('Supabase Error Details:', error);
-          errorMsg.textContent = `Database error: ${error.message || error.details || 'Check RLS policy'}`;
+          errorMsg.textContent = `Database error: ${error.message || error.details || 'Check table/column names'}`;
           errorMsg.classList.remove('hidden');
           return;
         }
@@ -133,7 +133,7 @@
           return;
         }
 
-        // 2. SUCCESS: Reveal Student Dashboard
+        // SUCCESS: Reveal Student Dashboard
         document.getElementById('login-card').classList.add('hidden');
         document.getElementById('dashboard').classList.remove('hidden');
 
@@ -153,10 +153,10 @@
     }
 
     function renderDashboard(records) {
-      // Set student profile header info
+      // Set student profile header info using 1-word column fields
       const student = records[0];
       document.getElementById('student-name').textContent = student.name || 'Student';
-      document.getElementById('student-info').textContent = `ID: ${student.student_id} | Course: ${student.course || 'N/A'}`;
+      document.getElementById('student-info').textContent = `ID: ${student.studentid} | Course: ${student.course || 'N/A'}`;
 
       const container = document.getElementById('records-container');
       container.innerHTML = '';
@@ -170,7 +170,7 @@
           <div class="flex justify-between items-center mb-4 border-b pb-2">
             <div>
               <h3 class="text-xl font-bold text-gray-800">${rec.subject || 'Subject'} (${rec.term || 'Term'})</h3>
-              <p class="text-xs text-gray-500">School Year: ${rec.school_year || '-'} | Semester: ${rec.semester || '-'}</p>
+              <p class="text-xs text-gray-500">School Year: ${rec.schoolyear || '-'} | Semester: ${rec.semester || '-'}</p>
             </div>
             <div class="text-right">
               <span class="text-sm font-medium text-gray-500 block">Final Grade</span>
@@ -188,8 +188,8 @@
             <div class="bg-white p-2 rounded border"><span class="text-xs text-gray-500 block">Quiz 7</span><strong>${rec.quiz7 || '-'}</strong></div>
             <div class="bg-white p-2 rounded border"><span class="text-xs text-gray-500 block">Quiz 8</span><strong>${rec.quiz8 || '-'}</strong></div>
             <div class="bg-white p-2 rounded border"><span class="text-xs text-gray-500 block">Exam</span><strong>${rec.exam || '-'}</strong></div>
-            <div class="bg-white p-2 rounded border"><span class="text-xs text-gray-500 block">Quiz Avg</span><strong>${rec.quiz_avg || '-'}</strong></div>
-            <div class="bg-white p-2 rounded border"><span class="text-xs text-gray-500 block">Exam Avg</span><strong>${rec.exam_avg || '-'}</strong></div>
+            <div class="bg-white p-2 rounded border"><span class="text-xs text-gray-500 block">Quiz Avg</span><strong>${rec.quizavg || '-'}</strong></div>
+            <div class="bg-white p-2 rounded border"><span class="text-xs text-gray-500 block">Exam Avg</span><strong>${rec.examavg || '-'}</strong></div>
           </div>
         `;
 
