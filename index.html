@@ -34,15 +34,33 @@
             font-size: 1.2rem;
             font-weight: bold;
             border-radius: 50px;
-            margin: 15px 0;
+            margin: 10px 0;
             cursor: pointer;
             box-shadow: 0 4px 15px rgba(0, 230, 118, 0.4);
             -webkit-tap-highlight-color: transparent;
+        }
+        /* Secondary Torch Button Style */
+        .torch-btn {
+            background-color: #333;
+            color: #fff;
+            padding: 12px;
+            font-size: 1rem;
+            box-shadow: none;
+            border: 1px solid #555;
+            margin-top: 5px;
+            margin-bottom: 15px;
+        }
+        .torch-btn.active {
+            background-color: #ffeb3b;
+            color: #000;
+            border-color: #ffeb3b;
+            box-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
         }
         button:disabled {
             background-color: #333;
             color: #777;
             box-shadow: none;
+            border: none;
         }
         #result-box {
             background: #1e1e1e;
@@ -137,6 +155,9 @@
         <!-- Mobile Video Feed -->
         <video id="webcam" autoplay playsinline muted></video>
         
+        <!-- FLASHLIGHT TOGGLE BUTTON -->
+        <button id="torchBtn" class="torch-btn" onclick="toggleTorch()" disabled>🔦 Toggle Flashlight</button>
+
         <button id="snapBtn" onclick="start5PassScan()" disabled>📷 SNAP & SCAN (BLUE INK)</button>
 
         <!-- Hidden canvas for processing -->
@@ -168,12 +189,15 @@
         const statusDisplay = document.getElementById('status');
         const errorLog = document.getElementById('error-log');
         const snapBtn = document.getElementById('snapBtn');
+        const torchBtn = document.getElementById('torchBtn');
         const hiddenCanvas = document.getElementById('hiddenCanvas');
         
         const resultModal = document.getElementById('resultModal');
         const modalShaded = document.getElementById('modalShaded');
 
         let isOpenCvReady = false;
+        let videoTrack = null;
+        let isTorchOn = false;
 
         function onOpenCvReady() {
             if (typeof cv !== 'undefined' && cv.Mat) {
@@ -197,6 +221,16 @@
             navigator.mediaDevices.getUserMedia(constraints)
             .then((stream) => {
                 video.srcObject = stream;
+                videoTrack = stream.getVideoTracks()[0];
+
+                // Check if device supports torch/flashlight
+                const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+                if (capabilities.torch) {
+                    torchBtn.disabled = false;
+                } else {
+                    torchBtn.innerText = "🔦 Flashlight Unsupported";
+                }
+
                 video.onloadedmetadata = () => {
                     video.play();
                     statusDisplay.innerText = "Hold steady and tap SNAP";
@@ -206,6 +240,29 @@
             .catch((err) => {
                 statusDisplay.innerText = "Camera Access Error";
                 errorLog.innerText = err.message + ". Ensure HTTPS or flags are set.";
+            });
+        }
+
+        // Toggle Flashlight/Torch State
+        function toggleTorch() {
+            if (!videoTrack) return;
+
+            isTorchOn = !isTorchOn;
+            videoTrack.applyConstraints({
+                advanced: [{ torch: isTorchOn }]
+            })
+            .then(() => {
+                if (isTorchOn) {
+                    torchBtn.classList.add('active');
+                    torchBtn.innerText = "🔦 Flashlight ON";
+                } else {
+                    torchBtn.classList.remove('active');
+                    torchBtn.innerText = "🔦 Toggle Flashlight";
+                }
+            })
+            .catch((err) => {
+                console.error("Torch error:", err);
+                errorLog.innerText = "Flashlight control error: " + err.message;
             });
         }
 
@@ -237,7 +294,6 @@
                 cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
 
                 // OPTIMIZED BLUE INK HSV THRESHOLDS
-                // Hue: 75-140 | Saturation: 15-255 | Value/Brightness: 15-255
                 lowBlue = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [75, 15, 15, 0]);
                 highBlue = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [140, 255, 255, 255]);
 
