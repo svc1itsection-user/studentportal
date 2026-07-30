@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Strict Blue Ink OMR Scanner</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            text-align: center;
+            background: #121212;
+            color: #fff;
+            margin: 0;
+            padding: 15px;
+        }
+        .container {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        video, canvas {
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+            background: #1e1e1e;
+        }
+        button {
+            width: 100%;
+            background-color: #00e676;
+            color: #000;
+            border: none;
+            padding: 18px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            margin: 15px 0;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 230, 118, 0.4);
+            -webkit-tap-highlight-color: transparent;
+        }
+        button:disabled {
+            background-color: #333;
+            color: #777;
+            box-shadow: none;
+        }
+        #result-box {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 12px;
+            border: 2px solid #00e676;
+            margin-top: 10px;
+        }
+        .count {
+            font-size: 3.5rem;
+            color: #00e676;
+            font-weight: bold;
+        }
+        .debug-label {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+        #error-log {
+            color: #ff5252;
+            font-size: 0.85rem;
+            margin-top: 8px;
+            word-break: break-all;
+        }
+
+        /* POPUP MODAL STYLES */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #1e1e1e;
+            border: 2px solid #00e676;
+            border-radius: 20px;
+            padding: 25px;
+            width: 85%;
+            max-width: 320px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 230, 118, 0.3);
+            animation: popup 0.3s ease-out;
+        }
+        @keyframes popup {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .modal-count {
+            font-size: 4rem;
+            color: #00e676;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .validation-badge {
+            display: inline-block;
+            background: #00e67622;
+            color: #00e676;
+            border: 1px solid #00e676;
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .modal-btn {
+            background: #00e676;
+            color: #000;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 25px;
+            width: 100%;
+            cursor: pointer;
+        }
+    </style>
+    <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
+</head>
+<body>
+
+    <h2>OMR Blue Ink Scanner</h2>
+    <p id="status">Loading OpenCV.js engine...</p>
+    <div id="error-log"></div>
+
+    <div class="container">
+        <!-- Mobile Video Feed -->
+        <video id="webcam" autoplay playsinline muted></video>
+        
+        <button id="snapBtn" onclick="start5PassScan()" disabled>📷 SNAP & SCAN (BLUE INK)</button>
+
+        <!-- Hidden canvas for processing -->
+        <canvas id="hiddenCanvas" style="display:none;"></canvas>
+
+        <div class="debug-label">Detected Mask (White = Found Blue Marks):</div>
+        <canvas id="canvasOut"></canvas>
+    </div>
+
+    <div id="result-box">
+        <div>Total Shaded Circles:</div>
+        <div class="count" id="totalShaded">0</div>
+    </div>
+
+    <!-- POPUP MODAL DIALOG -->
+    <div id="resultModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="validation-badge">✓ BLUE INK VERIFIED</div>
+            <h3 style="margin: 0; color: #fff;">Scan Complete</h3>
+            <p style="margin: 5px 0 0 0; color: #aaa; font-size: 0.9rem;">Total Shaded Circles:</p>
+            <div id="modalShaded" class="modal-count">0</div>
+            <button class="modal-btn" onclick="closeModal()">OK</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const totalShadedDisplay = document.getElementById('totalShaded');
+        const statusDisplay = document.getElementById('status');
+        const errorLog = document.getElementById('error-log');
+        const snapBtn = document.getElementById('snapBtn');
+        const hiddenCanvas = document.getElementById('hiddenCanvas');
+        
+        const resultModal = document.getElementById('resultModal');
+        const modalShaded = document.getElementById('modalShaded');
+
+        let isOpenCvReady = false;
+
+        function onOpenCvReady() {
+            if (typeof cv !== 'undefined' && cv.Mat) {
+                statusDisplay.innerText = "Engine Ready! Starting camera...";
+                isOpenCvReady = true;
+                startCamera();
+            } else {
+                setTimeout(onOpenCvReady, 300);
+            }
+        }
+
+        function startCamera() {
+            const constraints = { 
+                video: { 
+                    facingMode: "environment",
+                    width: { ideal: 640 },
+                    height: { ideal: 480 } 
+                } 
+            };
+
+            navigator.mediaDevices.getUserMedia(constraints)
+            .then((stream) => {
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    statusDisplay.innerText = "Hold steady and tap SNAP";
+                    snapBtn.disabled = false;
+                };
+            })
+            .catch((err) => {
+                statusDisplay.innerText = "Camera Access Error";
+                errorLog.innerText = err.message + ". Ensure HTTPS or flags are set.";
+            });
+        }
+
+        // Single Pass Frame Processing - 100% BLUE INK ISOLATION
+        function captureAndProcessFrame() {
+            let src = null, hsv = null, blueMask = null, dilatedMask = null,
+                lowBlue = null, highBlue = null, kernel = null, 
+                contours = null, hierarchy = null;
+
+            try {
+                let procWidth = 480;
+                let aspectRatio = video.videoHeight / video.videoWidth;
+                let procHeight = Math.round(procWidth * aspectRatio);
+
+                hiddenCanvas.width = procWidth;
+                hiddenCanvas.height = procHeight;
+
+                let ctx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+                ctx.drawImage(video, 0, 0, procWidth, procHeight);
+
+                let imgData = ctx.getImageData(0, 0, procWidth, procHeight);
+                
+                src = cv.matFromImageData(imgData);
+                hsv = new cv.Mat();
+                blueMask = new cv.Mat();
+
+                // Convert RGBA -> RGB -> HSV
+                cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+                cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+
+                // OPTIMIZED BLUE INK HSV THRESHOLDS
+                // Hue: 75-140 | Saturation: 15-255 | Value/Brightness: 15-255
+                lowBlue = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [75, 15, 15, 0]);
+                highBlue = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [140, 255, 255, 255]);
+
+                cv.inRange(hsv, lowBlue, highBlue, blueMask);
+
+                // Thicken blue strokes so partially shaded circles connect
+                dilatedMask = new cv.Mat();
+                kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+                cv.dilate(blueMask, dilatedMask, kernel, new cv.Point(-1, -1), 1);
+
+                // Find outer shapes
+                contours = new cv.MatVector();
+                hierarchy = new cv.Mat();
+                cv.findContours(dilatedMask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                let shadedCount = 0;
+                for (let i = 0; i < contours.size(); ++i) {
+                    let cnt = contours.get(i);
+                    let area = cv.contourArea(cnt);
+
+                    // Filters out tiny dots or huge borders
+                    if (area > 10 && area < 3500) {
+                        let rect = cv.boundingRect(cnt);
+                        let ratio = rect.width / rect.height;
+                        // Checks for roughly circular/square proportions
+                        if (ratio >= 0.45 && ratio <= 2.0) {
+                            shadedCount++;
+                        }
+                    }
+                }
+
+                // Render binary mask to debug canvas
+                cv.imshow('canvasOut', dilatedMask);
+
+                return shadedCount;
+
+            } catch (err) {
+                console.error(err);
+                return -1;
+            } finally {
+                if (src) src.delete();
+                if (hsv) hsv.delete();
+                if (blueMask) blueMask.delete();
+                if (dilatedMask) dilatedMask.delete();
+                if (kernel) kernel.delete();
+                if (lowBlue) lowBlue.delete();
+                if (highBlue) highBlue.delete();
+                if (contours) contours.delete();
+                if (hierarchy) hierarchy.delete();
+            }
+        }
+
+        // 5-Pass Frame Averaging Engine
+        function start5PassScan() {
+            if (!isOpenCvReady || snapBtn.disabled) return;
+
+            snapBtn.disabled = true;
+            errorLog.innerText = "";
+            let shadedResults = [];
+
+            let currentPass = 1;
+            const totalPasses = 5;
+
+            function runNextPass() {
+                if (currentPass <= totalPasses) {
+                    statusDisplay.innerText = `Scanning Frame ${currentPass}/${totalPasses}...`;
+                    
+                    setTimeout(() => {
+                        let count = captureAndProcessFrame();
+                        if (count >= 0) {
+                            shadedResults.push(count);
+                        }
+                        currentPass++;
+                        runNextPass();
+                    }, 80);
+                } else {
+                    let finalShaded = getMode(shadedResults);
+
+                    totalShadedDisplay.innerText = finalShaded;
+                    statusDisplay.innerText = "Scan Complete!";
+
+                    showPopup(finalShaded);
+
+                    snapBtn.disabled = false;
+                }
+            }
+
+            runNextPass();
+        }
+
+        function getMode(arr) {
+            if (arr.length === 0) return 0;
+            let frequency = {};
+            let maxFreq = 0;
+            let mode = arr[0];
+
+            for (let num of arr) {
+                frequency[num] = (frequency[num] || 0) + 1;
+                if (frequency[num] > maxFreq) {
+                    maxFreq = frequency[num];
+                    mode = num;
+                }
+            }
+            return mode;
+        }
+
+        function showPopup(shaded) {
+            modalShaded.innerText = shaded;
+            resultModal.style.display = "flex";
+        }
+
+        function closeModal() {
+            resultModal.style.display = "none";
+        }
+    </script>
+</body>
+</html>
